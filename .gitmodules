@@ -1,0 +1,3 @@
+[submodule "SHMModels"]
+	path = SHMModels
+	url = https://github.com/thayerf/SHMModels

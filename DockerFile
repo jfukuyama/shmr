@@ -1,0 +1,11 @@
+FROM continuumio/anaconda3:latest
+
+COPY environment.yml .
+COPY ./SHMModels /SHMModels
+RUN conda env create -f environment.yml
+RUN echo "source activate shmpy" > ~/.bashrc
+ENV PATH /opt/conda/envs/shmpy/bin:$PATH
+
+COPY ./python /python
+WORKDIR /python
+CMD python -W ignore keras_python_notrain.py
