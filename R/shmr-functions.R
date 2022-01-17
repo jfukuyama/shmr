@@ -240,8 +240,8 @@ spatial_colocalization <- function(seq_set, r_max = 25, r_min = 0) {
 
 #' Computes g(r) function
 #'
-#' @param germline_seq The germline sequence.
-#' @param mutated_seqs The mutated sequences.
+#' @param germline_seq The germline sequence, as a character vector.
+#' @param mutated_seqs The mutated sequences, as a list of character vectors.
 #' @param r_max Maximum distance between mutations to calculate g(r)
 #'     for.
 #' @param r_min Minimum distance between mutations to calculate g(r)
@@ -259,7 +259,8 @@ spatial_colocalization <- function(seq_set, r_max = 25, r_min = 0) {
 #' @importFrom dplyr group_by
 #' @importFrom dplyr summarise
 #' @importFrom magrittr %>%
-get_gr <- function(germline_seq, mutated_seqs, r_max, r_min, mutation_probs = NULL) {
+#' @export
+get_gr <- function(germline_seq, mutated_seqs, r_max, r_min, mutation_probs = NULL, n_boot = NULL) {
     mutations = sapply(mutated_seqs, function(ms) {
         get_mutation_indices(germline_seq, ms, as_indicator = FALSE)
     })
@@ -267,8 +268,100 @@ get_gr <- function(germline_seq, mutated_seqs, r_max, r_min, mutation_probs = NU
     gr = pairfreq %>% subset(expected_freq > 0) %>%
         group_by(dist) %>%
         summarise(gr = mean(freq_pair / expected_freq))
+    if(!is.null(n_boot)) {
+        boot_dist = list()
+        for(b in 1:n_boot) {
+            boot_sample = sample(length(mutations), replace = TRUE)
+            pairfreq = get_pair_frequency(mutations[boot_sample], length(mutated_seqs[[1]]), max_dist = r_max, min_dist = r_min, mutation_probs = mutation_probs)
+            gr_boot = pairfreq %>% subset(expected_freq > 0) %>%
+                group_by(dist) %>%
+                summarise(gr = mean(freq_pair / expected_freq))
+            gr_boot$boot_rep = b
+            boot_dist[[b]] = gr_boot
+        }
+        boot_dist = Reduce(rbind, boot_dist)
+        boot_summarised = boot_dist %>% group_by(dist) %>%
+            summarise(sd_boot = sd(gr), lo = quantile(gr, .025), hi = quantile(gr, .975))
+        return(list(gr, boot_dist, boot_summarised))
+    }
     return(gr)
 }
+
+#' @export
+get_gr_cross <- function(germline_seq, mutated_seqs, r_max, r_min, from_base, to_base, mutation_probs = NULL, n_boot = NULL) {
+    mutations = sapply(mutated_seqs, function(ms) {
+        get_mutation_indices(germline_seq, ms, as_indicator = FALSE)
+    })
+    pairfreq = get_pair_frequency(mutations, length(mutated_seqs[[1]]), max_dist = r_max, min_dist = r_min, mutation_probs = mutation_probs)
+    pairfreq$b1_identity = germline_seq[pairfreq$b1]
+    pairfreq$b2_identity = germline_seq[pairfreq$b2]
+    gr = pairfreq %>%
+        subset(expected_freq > 0 &
+               ((b1_identity == from_base & b2_identity == to_base) |
+                (b1_identity == to_base & b2_identity == from_base))
+               ) %>%
+        group_by(dist) %>%
+        summarise(gr = mean(freq_pair / expected_freq))
+    if(!is.null(n_boot)) {
+        boot_dist = list()
+        for(b in 1:n_boot) {
+            boot_sample = sample(length(mutations), replace = TRUE)
+            pairfreq = get_pair_frequency(mutations[boot_sample], length(mutated_seqs[[1]]), max_dist = r_max, min_dist = r_min, mutation_probs = mutation_probs)
+            pairfreq$b1_identity = germline_seq[pairfreq$b1]
+            pairfreq$b2_identity = germline_seq[pairfreq$b2]
+            gr_boot = pairfreq %>%
+                subset(expected_freq > 0 &
+                       ((b1_identity == from_base & b2_identity == to_base) |
+                        (b1_identity == to_base & b2_identity == from_base))
+                       ) %>%
+                group_by(dist) %>%
+                summarise(gr = mean(freq_pair / expected_freq))
+            gr_boot$boot_rep = b
+            boot_dist[[b]] = gr_boot
+        }
+        boot_dist = Reduce(rbind, boot_dist)
+        boot_summarised = boot_dist %>% group_by(dist) %>%
+            summarise(sd_boot = sd(gr), lo = quantile(gr, .025), hi = quantile(gr, .975))
+        return(list(gr, boot_dist, boot_summarised))
+    }
+    return(gr)
+}
+
+#' @export
+get_gr_at_position <- function(germline_seq, mutated_seqs, r_max, r_min, position, to_base, mutation_probs = NULL, n_boot = NULL) {
+    mutations = sapply(mutated_seqs, function(ms) {
+        get_mutation_indices(germline_seq, ms, as_indicator = FALSE)
+    })
+    pairfreq = get_pair_frequency(mutations, length(mutated_seqs[[1]]), max_dist = r_max, min_dist = r_min, mutation_probs = mutation_probs)
+    pairfreq$b1_identity = germline_seq[pairfreq$b1]
+    pairfreq$b2_identity = germline_seq[pairfreq$b2]
+    gr = pairfreq %>%
+        subset(expected_freq > 0 & b1 == position & b2_identity %in% to_base) %>%
+        group_by(dist) %>%
+        summarise(gr = mean(freq_pair / expected_freq))
+        if(!is.null(n_boot)) {
+        boot_dist = list()
+        for(b in 1:n_boot) {
+            boot_sample = sample(length(mutations), replace = TRUE)
+            pairfreq = get_pair_frequency(mutations[boot_sample], length(mutated_seqs[[1]]), max_dist = r_max, min_dist = r_min, mutation_probs = mutation_probs)
+            pairfreq$b1_identity = germline_seq[pairfreq$b1]
+            pairfreq$b2_identity = germline_seq[pairfreq$b2]
+            gr_boot = pairfreq %>%
+                subset(expected_freq > 0 & b1 == position & b2_identity %in% to_base) %>%
+                group_by(dist) %>%
+                summarise(gr = mean(freq_pair / expected_freq))
+            gr_boot$boot_rep = b
+            boot_dist[[b]] = gr_boot
+        }
+        boot_dist = Reduce(rbind, boot_dist)
+        boot_summarised = boot_dist %>% group_by(dist) %>%
+            summarise(sd_boot = sd(gr), lo = quantile(gr, .025), hi = quantile(gr, .975))
+        return(list(gr, boot_dist, boot_summarised))
+    }
+
+    return(gr)
+}
+
 
 #' Finds the frequencies of all pairs of mutations within a certain distance.
 #'
@@ -291,6 +384,7 @@ get_gr <- function(germline_seq, mutated_seqs, r_max, r_min, mutation_probs = NU
 #' @param min_dist The minimum distance to compute.
 #' @param mutation_probs mutation_probs[i] gives the probability of
 #'     mutation at position i.
+#' @export
 get_pair_frequency <- function(mutations, npositions, max_dist, min_dist = 0, mutation_probs = NULL) {
     n_pairs = sum(sapply(mutations, function(x) length(x) * (length(x) - 1) / 2))
     n_mutations = sum(sapply(mutations, length))
